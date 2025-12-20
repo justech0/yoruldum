@@ -1,0 +1,3 @@
+[2025-12-19T18:50:10+00:00] c91ab9b9b6d6 POST /api/properties user:guest Zorunlu alanlar eksik. | stack: null
+[2025-12-19T18:50:14+00:00] 814ed63f5407 GET /api/properties/undefined user:guest İlan bulunamadı. | stack: null
+[2025-12-20T10:48:13+00:00] e63044353a62 POST /api/auth/login user:guest Geçersiz email veya şifre. | stack: null
