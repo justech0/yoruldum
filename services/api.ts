@@ -15,7 +15,12 @@ const API_BASE = VITE_API_URL ? `${VITE_API_URL}/api` : '/api';
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('dies_token');
-  
+  const method = (options.method || 'GET').toString().toUpperCase();
+  const path = endpoint.split('?')[0];
+  const segments = path.split('/').filter(Boolean);
+  const isDetailGet = method === 'GET' && segments.length > 1 && /^\d+$/.test(segments[segments.length - 1]);
+  const isGetList = method === 'GET' && !isDetailGet;
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -34,32 +39,37 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
     if (response.status === 204) return {} as T;
 
-    // API 404 veriyorsa ve bu bir liste isteği ise boş array dön (Hata fırlatıp UI'ı bozma)
-    if (response.status === 404) {
-      console.warn(`API Not Found (404): ${endpoint}. Sunucu henüz hazır değil veya URL yanlış.`);
-      if (endpoint.includes('list') || endpoint.includes('properties') || endpoint.includes('advisors') || endpoint.includes('cities')) {
+    if (!response.ok) {
+      let errorMessage = `İşlem başarısız (Hata: ${response.status})`;
+      try {
+        const errJson = await response.json();
+        errorMessage = errJson.error?.message || errJson.message || errorMessage;
+      } catch {
+        // ignore JSON parse errors
+      }
+
+      if (response.status === 404 && isGetList) {
+        console.warn(`API Not Found (404): ${endpoint}. Sunucu henüz hazır değil veya URL yanlış.`);
         return [] as unknown as T;
       }
-      throw new Error("İstediğiniz kaynak bulunamadı.");
+      throw new Error(errorMessage);
     }
 
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.indexOf("application/json") !== -1) {
       const result = await response.json();
-      
-      if (!response.ok || result.success === false) {
+
+      if (result.success === false) {
         const errorMessage = result.error?.message || result.message || `İşlem başarısız (Hata: ${response.status})`;
         throw new Error(errorMessage);
       }
-      
+
       return result.data !== undefined ? result.data : result;
     } else {
-      if (!response.ok) throw new Error(`Sunucu Hatası: ${response.status}`);
       return {} as T;
     }
   } catch (error) {
-    // Liste çekme isteklerinde hata fırlatmak yerine boş liste dönerek UI'ı koru
-    if (endpoint.includes('list') || endpoint.includes('properties') || endpoint.includes('advisors') || endpoint.includes('cities')) {
+    if (isGetList) {
       console.error("Bağlantı hatası, boş veri dönülüyor:", error);
       return [] as unknown as T;
     }
@@ -150,6 +160,10 @@ export const api = {
     manageApplication: (id: number, status: string) => request(`/admin/applications/${id}`, {
       method: 'POST',
       body: JSON.stringify({ status })
+    }),
+    setAdvisorFounder: (advisorId: number, is_founder: boolean) => request(`/admin/advisors/${advisorId}/founder`, {
+      method: 'POST',
+      body: JSON.stringify({ is_founder })
     })
   },
 

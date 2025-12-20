@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# Serve uploaded files from api/uploads when not present at root
+RewriteCond %{REQUEST_URI} ^/uploads/
+RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-f
+RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-d
+RewriteRule ^uploads/(.*)$ api/uploads/$1 [L]
+
+# SPA fallback
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]

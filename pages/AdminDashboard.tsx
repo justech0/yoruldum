@@ -30,6 +30,9 @@ export const AdminDashboard = () => {
   const [previewImage, setPreviewImage] = useState<string>('');
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSavingOffice, setIsSavingOffice] = useState(false);
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [galleryPreviews, setGalleryPreviews] = useState<string[]>([]);
+  const [founderUpdatingId, setFounderUpdatingId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [stats, setStats] = useState<any>({});
@@ -39,20 +42,22 @@ export const AdminDashboard = () => {
   const [offices, setOffices] = useState<Office[]>([]);
   const [officeApplications, setOfficeApplications] = useState<OfficeApplication[]>([]);
   const [advisorApplications, setAdvisorApplications] = useState<AdvisorApplication[]>([]);
+  const [advisors, setAdvisors] = useState<Advisor[]>([]);
 
   const [listingFilters, setListingFilters] = useState({ term: '', status: '' });
   const [filteredListings, setFilteredListings] = useState<Property[]>([]);
 
   const loadAdminData = async () => {
     try {
-      const [statsData, pending, allListingsData, usersData, officesData, advisorApps, officeApps] = await Promise.all([
+      const [statsData, pending, allListingsData, usersData, officesData, advisorApps, officeApps, advisorList] = await Promise.all([
         api.admin.getStats().catch(() => ({})),
         api.admin.getPendingListings().catch(() => []),
-        api.properties.getList().catch(() => []), 
+        api.properties.getList().catch(() => []),
         api.admin.getUsers().catch(() => []),
         api.offices.getList().catch(() => []),
         api.admin.getAdvisorApplications().catch(() => []),
-        api.admin.getOfficeApplications().catch(() => [])
+        api.admin.getOfficeApplications().catch(() => []),
+        api.advisors.getList().catch(() => [])
       ]);
 
       setStats(statsData);
@@ -63,6 +68,7 @@ export const AdminDashboard = () => {
       setOffices(officesData);
       setAdvisorApplications(advisorApps);
       setOfficeApplications(officeApps);
+      setAdvisors(advisorList);
     } catch (error) {
       console.error("Failed to load admin data", error);
     }
@@ -88,6 +94,31 @@ export const AdminDashboard = () => {
         setIsCompressing(false);
       }
     }
+  };
+
+  const handleGalleryImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setIsCompressing(true);
+      try {
+        const compressed = await Promise.all(Array.from(e.target.files).map(file => compressToWebp(file, { quality: 0.75, maxDimension: 1600 })));
+        setGalleryFiles(compressed);
+        setGalleryPreviews(compressed.map(file => URL.createObjectURL(file)));
+      } catch (error) {
+        console.error('Gallery compression failed', error);
+        alert('Galeri görselleri işlenirken hata oluştu.');
+      } finally {
+        setIsCompressing(false);
+      }
+    }
+  };
+
+  const resetOfficeForm = () => {
+    setCurrentOffice({});
+    setIsEditingOffice(false);
+    setOfficeImageFile(null);
+    setPreviewImage('');
+    setGalleryFiles([]);
+    setGalleryPreviews([]);
   };
 
   if (!user || user.role !== 'admin') {
@@ -170,6 +201,97 @@ export const AdminDashboard = () => {
     }
   };
 
+  const handleToggleFounder = async (advisorId: number, nextState: boolean) => {
+    try {
+      setFounderUpdatingId(advisorId);
+      await api.admin.setAdvisorFounder(advisorId, nextState);
+      setAdvisors(prev => prev.map(a => a.id === advisorId ? { ...a, isFounder: nextState } : a));
+    } catch (e) {
+      console.error('Kurucu ortak güncellenemedi', e);
+      alert('Kurucu ortak durumu güncellenemedi.');
+    } finally {
+      setFounderUpdatingId(null);
+    }
+  };
+
+  const handleEditOffice = (office: Office) => {
+    setCurrentOffice(office);
+    setIsEditingOffice(true);
+    setPreviewImage(office.image || '');
+    setGalleryPreviews(office.gallery || []);
+    setGalleryFiles([]);
+  };
+
+  const handleDeleteOffice = async (id: number) => {
+    if (!window.confirm('Bu ofisi silmek istediğinize emin misiniz?')) return;
+    try {
+      await api.offices.delete(id);
+      setOffices(offices.filter(o => o.id !== id));
+    } catch (e) {
+      console.error('Ofis silinemedi', e);
+      alert('Ofis silinemedi.');
+    }
+  };
+
+  const handleSaveOffice = async () => {
+    if (!currentOffice.name || !currentOffice.address || !currentOffice.phone || !(previewImage || currentOffice.image) || !currentOffice.city || !currentOffice.district || !(currentOffice.workingHours || (currentOffice as any).working_hours)) {
+      alert('Lütfen gerekli ofis alanlarını doldurun.');
+      return;
+    }
+    setIsSavingOffice(true);
+    try {
+      let imageUrl = currentOffice.image || '';
+      if (officeImageFile) {
+        const fd = new FormData();
+        fd.append('files[]', officeImageFile);
+        const uploadRes = await api.upload(fd);
+        imageUrl = uploadRes.urls[0] || imageUrl;
+      }
+
+      let galleryUrls = currentOffice.gallery ? [...currentOffice.gallery] : [];
+      if (galleryFiles.length > 0) {
+        const fdGallery = new FormData();
+        galleryFiles.forEach(file => fdGallery.append('files[]', file));
+        const uploadRes = await api.upload(fdGallery);
+        galleryUrls = [...galleryUrls, ...(uploadRes.urls || [])];
+      }
+
+      const payload: any = {
+        name: currentOffice.name,
+        address: currentOffice.address,
+        phone: currentOffice.phone,
+        phone2: currentOffice.phone2,
+        whatsapp: currentOffice.whatsapp,
+        image: imageUrl,
+        gallery: galleryUrls,
+        locationUrl: (currentOffice as any).locationUrl || (currentOffice as any).location_url,
+        working_hours: (currentOffice as any).working_hours || currentOffice.workingHours,
+        isHeadquarters: currentOffice.isHeadquarters,
+        city: currentOffice.city,
+        district: currentOffice.district,
+        description: currentOffice.description,
+      };
+
+      if (currentOffice.id) {
+        await api.offices.update(currentOffice.id, payload);
+      } else {
+        const res = await api.offices.create(payload);
+        payload.id = res.id;
+      }
+
+      const refreshed = await api.offices.getList();
+      if (Array.isArray(refreshed)) {
+        setOffices(refreshed);
+      }
+      resetOfficeForm();
+    } catch (e) {
+      console.error('Ofis kaydedilemedi', e);
+      alert('Ofis kaydedilemedi.');
+    } finally {
+      setIsSavingOffice(false);
+    }
+  };
+
   const handleListingFilter = () => {
     let results = allListings;
     if (listingFilters.term) {
@@ -199,14 +321,14 @@ export const AdminDashboard = () => {
 
       {/* Tab Menu - Scrollable on Mobile */}
       <div className="flex overflow-x-auto gap-1 mb-8 bg-white p-1 rounded-2xl shadow-soft border border-gray-100 scrollbar-hide">
-        {[
+        {[ 
           { id: 'overview', label: 'Genel Bakış', icon: BarChart },
           { id: 'approvals', label: 'Onaylar', icon: Clock },
           { id: 'users', label: 'Kullanıcılar', icon: Users },
           { id: 'all-listings', label: 'İlanlar', icon: List },
-          { id: 'offices', label: 'Ofisler', icon: Building },
+          { id: 'settings', label: 'Site Ayarları', icon: Settings },
         ].map(tab => (
-          <button 
+          <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)} 
             className={`flex items-center gap-2 px-6 py-3 font-bold text-sm rounded-xl transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-dies-blue text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'}`}
@@ -319,8 +441,100 @@ export const AdminDashboard = () => {
                             </div>
                         </div>
                     ))}
-                 </div>
+                </div>
+           </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-soft">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-xl text-dies-dark flex items-center gap-2"><Users size={20} /> Kurucu Ortaklar</h3>
+              </div>
+              <div className="space-y-3">
+                {advisors.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-blue-50 flex items-center justify-center">
+                        {a.image ? <img src={a.image} className="w-full h-full object-cover" /> : <UserIcon size={24} className="text-dies-blue" />}
+                      </div>
+                      <div>
+                        <p className="font-bold text-dies-dark">{a.name}</p>
+                        <p className="text-xs text-gray-500 font-medium">{a.email}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleToggleFounder(a.id, !a.isFounder)}
+                      disabled={founderUpdatingId === a.id}
+                      className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest border ${a.isFounder ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-gray-600 border-gray-200'} ${founderUpdatingId === a.id ? 'opacity-70' : ''}`}
+                    >
+                      {a.isFounder ? 'Kurucu Ortak' : 'Kurucu Yap'}
+                    </button>
+                  </div>
+                ))}
+                {advisors.length === 0 && (
+                  <p className="text-sm text-gray-500">Danışman bulunamadı.</p>
+                )}
+              </div>
             </div>
+
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-soft">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-black text-xl text-dies-dark flex items-center gap-2"><Building size={20} /> Ofis Yönetimi</h3>
+                <button onClick={resetOfficeForm} className="px-4 py-2 bg-dies-blue text-white rounded-lg text-xs font-black uppercase tracking-widest">Yeni Ofis Ekle</button>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <input value={currentOffice.name || ''} onChange={e => setCurrentOffice({ ...currentOffice, name: e.target.value })} className={inputClass} placeholder="Ofis Adı" />
+                  <input value={currentOffice.phone || ''} onChange={e => setCurrentOffice({ ...currentOffice, phone: e.target.value })} className={inputClass} placeholder="Telefon" />
+                  <input value={currentOffice.phone2 || ''} onChange={e => setCurrentOffice({ ...currentOffice, phone2: e.target.value })} className={inputClass} placeholder="İkinci Telefon" />
+                  <input value={currentOffice.whatsapp || ''} onChange={e => setCurrentOffice({ ...currentOffice, whatsapp: e.target.value })} className={inputClass} placeholder="WhatsApp" />
+                  <input value={currentOffice.city || ''} onChange={e => setCurrentOffice({ ...currentOffice, city: e.target.value })} className={inputClass} placeholder="İl" />
+                  <input value={currentOffice.district || ''} onChange={e => setCurrentOffice({ ...currentOffice, district: e.target.value })} className={inputClass} placeholder="İlçe" />
+                  <textarea value={currentOffice.address || ''} onChange={e => setCurrentOffice({ ...currentOffice, address: e.target.value })} className={inputClass} placeholder="Adres" />
+                  <textarea value={currentOffice.description || ''} onChange={e => setCurrentOffice({ ...currentOffice, description: e.target.value })} className={inputClass} placeholder="Açıklama" />
+                  <input value={(currentOffice as any).locationUrl || (currentOffice as any).location_url || ''} onChange={e => setCurrentOffice({ ...currentOffice, locationUrl: e.target.value })} className={inputClass} placeholder="Konum URL" />
+                  <input value={currentOffice.workingHours || (currentOffice as any).working_hours || ''} onChange={e => setCurrentOffice({ ...currentOffice, workingHours: e.target.value })} className={inputClass} placeholder="Çalışma Saatleri" />
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="hq" checked={!!currentOffice.isHeadquarters} onChange={e => setCurrentOffice({ ...currentOffice, isHeadquarters: e.target.checked })} />
+                    <label htmlFor="hq" className="text-sm font-semibold text-gray-700">Merkez Ofis</label>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500">Kapak Görseli</label>
+                    <input type="file" accept="image/*" onChange={handleOfficeImageChange} ref={fileInputRef} />
+                    {previewImage && <img src={previewImage} className="w-full h-32 object-cover rounded-lg border" alt="preview" />}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500">Galeri Görselleri</label>
+                    <input type="file" multiple accept="image/*" onChange={handleGalleryImageChange} />
+                    <div className="flex flex-wrap gap-2">
+                      {(galleryPreviews.length ? galleryPreviews : (currentOffice.gallery || [])).map((src, idx) => (
+                        <img key={idx} src={src} className="w-16 h-16 object-cover rounded-lg border" />
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={handleSaveOffice} disabled={isSavingOffice} className="w-full bg-dies-blue text-white py-3 rounded-xl font-black uppercase tracking-widest text-sm">
+                    {isSavingOffice ? 'Kaydediliyor...' : (isEditingOffice ? 'Ofisi Güncelle' : 'Ofis Kaydet')}
+                  </button>
+                </div>
+                <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                  {offices.map(o => (
+                    <div key={o.id} className="p-4 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-dies-dark">{o.name}</p>
+                        <p className="text-xs text-gray-500">{o.city} / {o.district}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleEditOffice(o)} className="p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold">Düzenle</button>
+                        <button onClick={() => handleDeleteOffice(o.id)} className="p-2 bg-red-50 text-red-600 border border-red-100 rounded-lg text-xs font-bold">Sil</button>
+                      </div>
+                    </div>
+                  ))}
+                  {offices.length === 0 && <p className="text-sm text-gray-500">Henüz ofis bulunmuyor.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {activeTab === 'approvals' && (

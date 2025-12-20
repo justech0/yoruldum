@@ -82,6 +82,7 @@ $cleanPath = $cleanPath ?: '/';
 $request->path = $cleanPath;
 
 $baseUrl = rtrim(getenv('APP_URL') ?: (($_SERVER['REQUEST_SCHEME'] ?? 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? '')), '/');
+$baseUrl = preg_replace('#/api/?$#', '', $baseUrl);
 
 $pdo = Database::connection();
 $currentUser = AuthMiddleware::getUser($pdo);
@@ -196,6 +197,10 @@ $router->add('POST', '/applications/office', function ($req) use ($pdo) {
 $router->add('GET', '/admin/stats', function () use ($pdo, $currentUser) {
     if (!$currentUser || $currentUser['role'] !== 'admin') Response::error(403, 'Bu işlem için yetkiniz yok.');
     AdminController::stats($pdo);
+});
+$router->add('POST', '/admin/advisors/{id}/founder', function ($req, $params) use ($pdo, $currentUser) {
+    if (!$currentUser || $currentUser['role'] !== 'admin') Response::error(403, 'Bu işlem için yetkiniz yok.');
+    AdminController::setAdvisorFounder($pdo, (int)$params['id'], $req->body);
 });
 $router->add('GET', '/admin/properties/pending', function () use ($pdo, $currentUser) {
     if (!$currentUser || $currentUser['role'] !== 'admin') Response::error(403, 'Bu işlem için yetkiniz yok.');

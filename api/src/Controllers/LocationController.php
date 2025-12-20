@@ -35,7 +35,22 @@ class LocationController
             $townClause = ' AND (town_id = ? OR town_id IS NULL)';
             $params[] = $townId;
         }
-        $stmt = $pdo->prepare('SELECT id, name, town_id FROM neighborhoods WHERE district_id = ?' . $townClause . ' ORDER BY name');
+
+        $cityId = null;
+        $cityStmt = $pdo->prepare('SELECT city_id FROM districts WHERE id = ? LIMIT 1');
+        $cityStmt->execute([$districtId]);
+        $cityRow = $cityStmt->fetch();
+        if ($cityRow && isset($cityRow['city_id'])) {
+            $cityId = (int)$cityRow['city_id'];
+        }
+
+        $conditions = ['district_id = ?'];
+        if ($cityId !== null) {
+            $conditions[] = '(district_id = 0 AND city_id = ?)';
+            $params[] = $cityId;
+        }
+
+        $stmt = $pdo->prepare('SELECT id, name, town_id FROM neighborhoods WHERE (' . implode(' OR ', $conditions) . ')' . $townClause . ' ORDER BY name');
         $stmt->execute($params);
         $neighborhoods = array_map(function ($row) {
             return [

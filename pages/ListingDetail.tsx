@@ -17,7 +17,11 @@ export const ListingDetail = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
     const fetchData = async () => {
-        if (!id) return;
+        if (!id || id === 'undefined' || Number.isNaN(Number(id))) {
+            setProperty(null);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const prop = await api.properties.getDetail(id);

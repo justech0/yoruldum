@@ -18,12 +18,18 @@ class OfficeController
 
     public static function create(PDO $pdo, array $payload): void
     {
-        $required = ['name','address','phone','image','working_hours','city','district'];
+        $workingHours = $payload['working_hours'] ?? ($payload['workingHours'] ?? null);
+        $locationUrl = $payload['location_url'] ?? ($payload['locationUrl'] ?? null);
+        $required = ['name','address','phone','image','city','district'];
         foreach ($required as $field) {
             if (empty($payload[$field])) {
                 Response::error(422, 'Ofis için gerekli alanlar eksik.');
             }
         }
+        if (empty($workingHours)) {
+            Response::error(422, 'Ofis için gerekli alanlar eksik.');
+        }
+
         $gallery = isset($payload['gallery']) ? json_encode($payload['gallery']) : json_encode([]);
         $stmt = $pdo->prepare('INSERT INTO offices (name,address,phone,phone2,whatsapp,image,gallery,location_url,working_hours,is_headquarters,city,district,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?, ?, NOW(), NOW())');
         $stmt->execute([
@@ -34,8 +40,8 @@ class OfficeController
             $payload['whatsapp'] ?? null,
             $payload['image'],
             $gallery,
-            $payload['locationUrl'] ?? null,
-            $payload['working_hours'] ?? $payload['workingHours'] ?? '',
+            $locationUrl,
+            $workingHours ?? '',
             !empty($payload['isHeadquarters']) ? 1 : 0,
             $payload['city'],
             $payload['district'],
@@ -52,11 +58,18 @@ class OfficeController
         foreach ($fields as $field) {
             $key = $field;
             $payloadKey = $field;
-            if ($field === 'location_url' && isset($payload['locationUrl'])) {
-                $payloadKey = 'locationUrl';
+            if ($field === 'location_url') {
+                if (isset($payload['locationUrl'])) {
+                    $payloadKey = 'locationUrl';
+                }
             }
-            if ($field === 'working_hours' && isset($payload['workingHours'])) {
-                $payloadKey = 'workingHours';
+            if ($field === 'working_hours') {
+                if (isset($payload['workingHours'])) {
+                    $payloadKey = 'workingHours';
+                }
+            }
+            if ($field === 'is_headquarters' && array_key_exists('isHeadquarters', $payload)) {
+                $payloadKey = 'isHeadquarters';
             }
             if (array_key_exists($payloadKey, $payload)) {
                 $updates[] = "$field = ?";
