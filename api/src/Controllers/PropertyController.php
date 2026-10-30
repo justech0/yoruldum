@@ -129,7 +129,7 @@ class PropertyController
     public static function create(PDO $pdo, array $user, array $payload, string $baseUrl): void
     {
         $title = trim($payload['title'] ?? '');
-        $description = trim($payload['description'] ?? '');
+        $description = trim((string)($payload['description'] ?? ''));
         $price = $payload['price'] ?? null;
         $category = $payload['category'] ?? null;
         $listingIntent = $payload['listing_intent'] ?? ($payload['intent'] ?? null);
@@ -137,17 +137,26 @@ class PropertyController
         $district = $payload['district'] ?? null;
         $neighborhood = $payload['neighborhood'] ?? null;
         $image = $payload['image'] ?? null;
-        if (!$title || !$description || !$price || !$category || !$listingIntent || !$province || !$district || !$neighborhood || !$image) {
-           $missing = [];
-foreach (['title','description','price','category','listing_intent','province','district','neighborhood','image'] as $field) {
-    if (!isset($data[$field]) || $data[$field] === '' || $data[$field] === null) {
-        $missing[] = $field;
-    }
-}
-if ($missing) {
-    Response::error(400, 'Zorunlu alanlar eksik.', ['missing' => $missing]);
-}
 
+        $requiredFields = ['title','price','category','listing_intent','province','district','neighborhood','image'];
+        $missing = [];
+        foreach ($requiredFields as $field) {
+            $value = $payload[$field] ?? null;
+            if (is_string($value)) {
+                $value = trim($value);
+            }
+            if (in_array($field, ['province', 'district', 'neighborhood'], true)) {
+                if ($value === '' || $value === null || $value === 'Seçiniz') {
+                    $missing[] = $field;
+                }
+                continue;
+            }
+            if ($value === '' || $value === null) {
+                $missing[] = $field;
+            }
+        }
+        if ($missing) {
+            Response::error(400, 'Zorunlu alanlar eksik.', ['missing' => $missing]);
         }
 
         $status = ($user['role'] === 'advisor' || $user['role'] === 'admin') ? 'approved' : 'pending';
@@ -160,7 +169,7 @@ if ($missing) {
             $user['id'],
             $advisorId,
             $title,
-            $description,
+            $description ?? '',
             $price,
             $province,
             $district,
@@ -186,7 +195,18 @@ if ($missing) {
             !empty($payload['is_featured']) ? 1 : 0,
         ]);
         $id = (int)$pdo->lastInsertId();
-        self::detail($pdo, $user, $id, $baseUrl);
+        if (!$id) {
+            Response::error(500, 'İlan oluşturulamadı.');
+        }
+
+        $stmt = $pdo->prepare('SELECT * FROM properties WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            Response::error(500, 'İlan oluşturulamadı.');
+        }
+
+        Response::success(['id' => $id, 'property' => self::formatProperty($row, $baseUrl)], 201);
     }
 
     public static function update(PDO $pdo, array $user, int $id, array $payload, string $baseUrl): void

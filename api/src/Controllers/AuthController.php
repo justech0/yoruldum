@@ -85,14 +85,15 @@ class AuthController
             $sahibinden = $payload['sahibinden_link'] ?? null;
             $experience = $payload['experience_years'] ?? 0;
             $totalSales = $payload['total_sales'] ?? 0;
+            $advisorImage = array_key_exists('image', $payload) ? $payload['image'] : null;
             $stmt = $pdo->prepare('SELECT user_id FROM advisors WHERE user_id = ?');
             $stmt->execute([$user['id']]);
             if ($stmt->fetch()) {
-                $stmt = $pdo->prepare('UPDATE advisors SET about = ?, specializations = ?, sahibinden_link = ?, experience_years = ?, total_sales = ? WHERE user_id = ?');
-                $stmt->execute([$about, $specializations, $sahibinden, $experience, $totalSales, $user['id']]);
+                $stmt = $pdo->prepare('UPDATE advisors SET about = ?, specializations = ?, sahibinden_link = ?, experience_years = ?, total_sales = ?, image = COALESCE(?, image) WHERE user_id = ?');
+                $stmt->execute([$about, $specializations, $sahibinden, $experience, $totalSales, $advisorImage, $user['id']]);
             } else {
-                $stmt = $pdo->prepare('INSERT INTO advisors (user_id, about, specializations, sahibinden_link, experience_years, total_sales) VALUES (?, ?, ?, ?, ?, ?)');
-                $stmt->execute([$user['id'], $about, $specializations, $sahibinden, $experience, $totalSales]);
+                $stmt = $pdo->prepare('INSERT INTO advisors (user_id, about, specializations, sahibinden_link, experience_years, total_sales, image) VALUES (?, ?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$user['id'], $about, $specializations, $sahibinden, $experience, $totalSales, $advisorImage]);
             }
         }
 

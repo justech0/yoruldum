@@ -70,6 +70,33 @@ class AdminController
         Response::success(['message' => 'Rol güncellendi.']);
     }
 
+    public static function setAdvisorFounder(PDO $pdo, int $userId, array $payload): void
+    {
+        $stmt = $pdo->prepare('SELECT id, role FROM users WHERE id = ? AND deleted_at IS NULL');
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+        if (!$user || $user['role'] !== 'advisor') {
+            Response::error(404, 'Danışman bulunamadı.');
+        }
+
+        $isFounder = 0;
+        if (array_key_exists('is_founder', $payload)) {
+            $isFounder = !empty($payload['is_founder']) ? 1 : 0;
+        } elseif (array_key_exists('isFounder', $payload)) {
+            $isFounder = !empty($payload['isFounder']) ? 1 : 0;
+        }
+
+        $stmt = $pdo->prepare('SELECT user_id FROM advisors WHERE user_id = ?');
+        $stmt->execute([$userId]);
+        if ($stmt->fetch()) {
+            $pdo->prepare('UPDATE advisors SET is_founder = ? WHERE user_id = ?')->execute([$isFounder, $userId]);
+        } else {
+            $pdo->prepare('INSERT INTO advisors (user_id, is_founder) VALUES (?, ?)')->execute([$userId, $isFounder]);
+        }
+
+        Response::success(['message' => 'Kurucu ortak bilgisi güncellendi.', 'userId' => $userId, 'is_founder' => (bool)$isFounder]);
+    }
+
     public static function resetPassword(PDO $pdo, int $id): void
     {
         $newPassword = bin2hex(random_bytes(4));

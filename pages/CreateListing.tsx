@@ -185,7 +185,12 @@ export const CreateListing = () => {
       alert("Lütfen en az bir fotoğraf yükleyin.");
       return;
     }
-    
+
+    if (!locationState.province || !locationState.district || !locationState.neighborhood) {
+      alert("Lütfen il, ilçe ve mahalle bilgilerini seçiniz.");
+      return;
+    }
+
     setIsLoading(true);
     setUploadProgress(0);
 
@@ -209,7 +214,7 @@ export const CreateListing = () => {
       const formData = new FormData(form);
       
       const propertyData = {
-        title: formData.get('title'),
+        title: (formData.get('title') as string | null)?.toString().trim() || '',
         price: Number(formData.get('price')),
         currency: 'TL',
         province: locationState.province,
@@ -223,9 +228,9 @@ export const CreateListing = () => {
         bathrooms: category === 'Konut' ? Number(formData.get('bathrooms')) : undefined,
         area_gross: Number(formData.get('area')),
         area_net: Number(formData.get('net_area')),
-        advisorId: user?.id,
+        advisor_id: user?.id,
         sahibindenLink: formData.get('sahibinden_link'),
-        description: formData.get('description'),
+        description: (formData.get('description') as string | null)?.toString().trim() ?? '',
         features: selectedFeatures,
         buildingAge: category === 'Konut' ? formData.get('building_age') : undefined,
         heatingType: category === 'Konut' ? formData.get('heating_type') : undefined,
@@ -239,6 +244,10 @@ export const CreateListing = () => {
         setCreatedId(editingProperty.id);
       } else {
         const res = await api.properties.create(propertyData);
+        if (!res || typeof res.id !== 'number' || Number.isNaN(res.id)) {
+          console.error('Geçersiz oluşturma yanıtı', res);
+          throw new Error('İlan oluşturulamadı.');
+        }
         setCreatedId(res.id);
       }
 
@@ -340,14 +349,14 @@ export const CreateListing = () => {
               <div>
                  <label className={labelClass}>İlçe</label>
                  <select required name="district" value={locationState.district} onChange={handleLocationChange} className={inputClass}>
-                   <option>Seçiniz</option>
+                   <option value="">Seçiniz</option>
                    {districts.map(d => <option key={String(d.id)} value={d.name}>{d.name}</option>)}
                  </select>
               </div>
               <div>
                  <label className={labelClass}>Mahalle / Köy</label>
                  <select required name="neighborhood" value={locationState.neighborhood} onChange={handleLocationChange} className={inputClass}>
-                   <option>Mahalle / Köy Seçiniz</option>
+                   <option value="">Mahalle / Köy Seçiniz</option>
                    {neighborhoods.map(n => <option key={String(n.id)} value={n.name}>{n.name}</option>)}
                  </select>
               </div>
